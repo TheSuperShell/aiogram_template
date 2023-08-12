@@ -1,5 +1,5 @@
-aiogram~=2.18
-aioredis==2.0.1
-environs~=9.0
-aiogram-broadcaster
+aiogram==2.25.1
+aiogram-broadcaster==0.0.7
+environs==9.5.0
+SQLAlchemy==2.0.19
 
