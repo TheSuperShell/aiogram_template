@@ -1,22 +1,24 @@
-import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.contrib.middlewares.environment import EnvironmentMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.contrib.fsm_storage.redis import RedisStorage2
+from aiogram.utils.executor import start_polling
 
 from tgbot.config import load_config
-from tgbot.filters.admin import AdminFilter
-from tgbot.handlers.admin import register_admin
-from tgbot.handlers.echo import register_echo
-from tgbot.handlers.user import register_user
-from tgbot.middlewares.environment import EnvironmentMiddleware
+from tgbot.filters import AdminFilter
+from tgbot.handlers import register_admin, register_user, register_errors
+from tgbot.misc.notifications import startup_notify
 
 logger = logging.getLogger(__name__)
 
 
 def register_all_middlewares(dp, config):
-    dp.setup_middleware(EnvironmentMiddleware(config=config))
+    data = {
+        'config': config,
+    }
+    dp.setup_middleware(EnvironmentMiddleware(data))
 
 
 def register_all_filters(dp):
@@ -26,11 +28,23 @@ def register_all_filters(dp):
 def register_all_handlers(dp):
     register_admin(dp)
     register_user(dp)
+    register_errors(dp)
 
-    register_echo(dp)
+
+async def on_startup(dp: Dispatcher):
+    register_all_middlewares(dp, dp.bot['config'])
+    register_all_filters(dp)
+    register_all_handlers(dp)
+
+    await startup_notify(dp.bot['config'].tg_bot.admin_ids)
 
 
-async def main():
+async def on_shutdown(dp: Dispatcher):
+    await dp.storage.close()
+    await dp.storage.wait_closed()
+
+
+def main():
     logging.basicConfig(
         level=logging.INFO,
         format=u'%(filename)s:%(lineno)d #%(levelname)-8s [%(asctime)s] - %(name)s - %(message)s',
@@ -44,21 +58,12 @@ async def main():
 
     bot['config'] = config
 
-    register_all_middlewares(dp, config)
-    register_all_filters(dp)
-    register_all_handlers(dp)
-
     # start
     try:
-        await dp.start_polling()
+        start_polling(dp, on_startup=on_startup, on_shutdown=on_shutdown)
     finally:
-        await dp.storage.close()
-        await dp.storage.wait_closed()
-        await bot.session.close()
+        logging.warning("Bot closed")
 
 
 if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.error("Bot stopped!")
+    main()
